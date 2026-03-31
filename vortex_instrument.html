@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <title>VORTEX // THE ULTIMATE HANDPAN ENGINE</title>
+    <style>
+        :root { 
+            --blue: #00e5ff; --green: #b388ff; --purple: #7c4dff; --red: #ff3366; --bg: #050510; 
+            --panel: rgba(10, 10, 25, 0.95);
+        }
+        body, html { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--blue); font-family: 'Courier New', monospace; overflow: hidden; display: flex; }
+        
+        .sidebar { width: 340px; background: var(--panel); border-right: 1px solid rgba(124, 77, 255, 0.3); padding: 25px; display: flex; flex-direction: column; gap: 12px; z-index: 10; box-shadow: 5px 0 20px rgba(0,0,0,0.8); overflow-y: auto; }
+        .viewport { flex-grow: 1; position: relative; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle at center, #100a20 0%, #000 80%); overflow: hidden; }
+        
+        /* Knoppen */
+        .btn { border: 1px solid var(--purple); background: rgba(124, 77, 255, 0.05); color: var(--green); padding: 12px; cursor: pointer; text-transform: uppercase; font-weight: bold; width: 100%; letter-spacing: 1px; transition: 0.2s; }
+        .btn:hover:not(:disabled) { background: rgba(124, 77, 255, 0.2); box-shadow: 0 0 15px rgba(124, 77, 255, 0.4); }
+        .btn:disabled { opacity: 0.2; cursor: not-allowed; border-color: #555; color: #555; }
+        .btn.active { border-color: var(--blue); color: var(--blue); box-shadow: 0 0 20px rgba(0, 229, 255, 0.5); }
+        .btn-small { padding: 8px; font-size: 0.7rem; width: 48%; }
+
+        /* Recording Animatie */
+        .btn.recording { border-color: var(--red); color: var(--red); box-shadow: 0 0 20px rgba(255, 51, 102, 0.6); animation: pulseRecord 1.5s infinite; }
+        @keyframes pulseRecord { 0% { box-shadow: 0 0 10px rgba(255, 51, 102, 0.4); } 50% { box-shadow: 0 0 25px rgba(255, 51, 102, 0.9); } 100% { box-shadow: 0 0 10px rgba(255, 51, 102, 0.4); } }
+        
+        /* UI Elementen */
+        .hud-display { font-size: 2.2rem; color: var(--blue); text-shadow: 0 0 15px var(--blue); margin: 5px 0; font-weight: bold; text-align: center; }
+        .info-text { font-size: 0.75rem; color: #888; text-align: center; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 1px;}
+        .badge { font-size: 10px; padding: 4px 8px; border: 1px solid #333; margin-right: 5px; text-transform: uppercase; }
+        .online { color: #39ff14; border-color: #39ff14; text-shadow: 0 0 5px #39ff14; }
+
+        /* Sliders & Dropdowns (De nieuwe instrument controls) */
+        .control-group { background: rgba(0,0,0,0.4); padding: 12px; border: 1px solid #223; margin-top: 5px; }
+        select { width: 100%; padding: 8px; background: #050510; color: var(--blue); border: 1px solid var(--purple); font-family: 'Courier New', monospace; outline: none; cursor: pointer; margin-bottom: 10px; }
+        
+        input[type=range] { -webkit-appearance: none; width: 100%; background: rgba(124, 77, 255, 0.2); height: 4px; border-radius: 2px; outline: none; margin-bottom: 15px; margin-top: 5px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--blue); cursor: pointer; box-shadow: 0 0 10px var(--blue); transition: 0.1s; }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); }
+
+        /* De Handpan Body */
+        .vortex-container { position: relative; width: 500px; height: 500px; border-radius: 50%; background: radial-gradient(circle at center, #201a35 0%, #050510 100%); border: 2px solid #223; box-shadow: inset 0 0 50px rgba(0,0,0,0.8), 0 0 30px rgba(0,0,0,0.5); }
+        .vortex-node { position: absolute; border-radius: 50%; border: 2px solid rgba(179, 136, 255, 0.3); background: rgba(0,0,0,0.6); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; color: #888; transition: 0.1s; box-shadow: inset 0 0 10px rgba(0,0,0,0.8); }
+        .vortex-node:hover { border-color: var(--blue); color: var(--blue); transform: scale(1.1); }
+        .vortex-node.selected { background: rgba(124, 77, 255, 0.2); border-color: var(--purple); color: var(--green); box-shadow: 0 0 15px var(--purple) inset; }
+        .vortex-node.playing { background: var(--blue); border-color: #fff; box-shadow: 0 0 30px var(--blue); color: #000; transform: scale(1.2); }
+        
+        #log { font-size: 10px; color: #888; height: 80px; overflow-y: auto; border-top: 1px solid #333; padding-top: 10px; margin-top: auto; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2 style="color:var(--purple); margin:0; letter-spacing: 2px;">VORTEX DAW</h2>
+        <div style="display:flex;">
+            <span id="p2p-badge" class="badge">P2P OFFLINE</span>
+            <span id="audio-badge" class="badge">AUDIO STANDBY</span>
+        </div>
+        
+        <div class="control-group">
+            <div class="info-text" style="text-align: left;">INSTRUMENT SCALE</div>
+            <select id="scale-select" onchange="changeScale(this.value, true)">
+                <option value="F# Celtic Minor">F# Celtic Minor (Mystic)</option>
+                <option value="D Kurd">D Kurd (Deep/Earthy)</option>
+                <option value="C Akebono">C Akebono (Japanese)</option>
+            </select>
+
+            <div class="info-text" style="text-align: left;">MASTER VOLUME</div>
+            <input type="range" id="vol-slider" min="0" max="1" step="0.05" value="0.8" oninput="updateVolume(this.value)">
+            
+            <div class="info-text" style="text-align: left;">ACOUSTIC SPACE (REVERB)</div>
+            <input type="range" id="rev-slider" min="0" max="0.8" step="0.05" value="0.35" oninput="updateReverb(this.value)">
+        </div>
+
+        <div style="background: rgba(0,0,0,0.5); padding: 10px; border: 1px solid #333;">
+            <div class="info-text">CURRENT NOTE</div>
+            <div class="hud-display" id="freq-out">-- Hz</div>
+            <div class="info-text" id="note-out" style="color: var(--green);">--</div>
+        </div>
+
+        <button class="btn" id="btn-1" onclick="initEngine()">1. INIT ENGINE</button>
+        <button class="btn" id="btn-2" onclick="startTunnel()" disabled>2. INITIATE (MASTER)</button>
+        
+        <div style="display: flex; justify-content: space-between;">
+            <button class="btn btn-small" onclick="randomizeNodes()">RANDOMIZE</button>
+            <button class="btn btn-small" onclick="clearNodes()">CLEAR</button>
+        </div>
+
+        <button class="btn" id="btn-seq" onclick="toggleSequencer()" disabled>START P2P RESONANCE</button>
+        
+        <hr style="border:0; border-top:1px solid #333; width:100%; margin: 0;">
+        <button class="btn" id="btn-record" onclick="toggleRecording()" style="display: none;">REC / CAPTURE</button>
+        <div id="log"><div>[SYS] DAW Engine ingeladen.</div></div>
+    </div>
+
+    <div class="viewport">
+        <div style="position:absolute; bottom:20px; left:20px; color:var(--green); font-size:12px;">
+            DATA_STREAM: <span id="dc-status">DISCONNECTED</span>
+        </div>
+        <div class="vortex-container" id="vortex"></div>
+    </div>
+
+<script>
+    let aCtx, masterOut, audioDest, dc, ws, pc = null, feedbackGain = null;
+    let isPlaying = false, isRecording = false;
+    let currentStep = 0, seqInterval;
+    let iceQueue = [], myRole = 'idle', sessionToken = null;
+    const myID = "VTX-" + Math.random().toString(36).substr(2, 5);
+    
+    let mediaRecorder, recordedChunks = [], displayStream;
+    
+    // --- SCALES (TOONLADDERS) ---
+    const scalesDB = {
+        "F# Celtic Minor": [
+            { note: "F#3", freq: 185.00 }, { note: "C#4", freq: 277.18 }, { note: "D4",  freq: 293.66 },
+            { note: "E4",  freq: 329.63 }, { note: "F#4", freq: 369.99 }, { note: "G#4", freq: 415.30 },
+            { note: "A4",  freq: 440.00 }, { note: "C#5", freq: 554.37 }, { note: "E5",  freq: 659.25 }
+        ],
+        "D Kurd": [
+            { note: "D3", freq: 146.83 }, { note: "A3", freq: 220.00 }, { note: "Bb3", freq: 233.08 },
+            { note: "C4", freq: 261.63 }, { note: "D4", freq: 293.66 }, { note: "E4", freq: 329.63 },
+            { note: "F4", freq: 349.23 }, { note: "G4", freq: 392.00 }, { note: "A4", freq: 440.00 }
+        ],
+        "C Akebono": [
+            { note: "C3", freq: 130.81 }, { note: "D3", freq: 146.83 }, { note: "Eb3", freq: 155.56 },
+            { note: "G3", freq: 196.00 }, { note: "Ab3", freq: 207.65 }, { note: "C4", freq: 261.63 },
+            { note: "D4", freq: 293.66 }, { note: "Eb4", freq: 311.13 }, { note: "G4", freq: 392.00 }
+        ]
+    };
+    
+    let currentScaleName = "F# Celtic Minor";
+    let scale = scalesDB[currentScaleName];
+    const STEPS = scale.length;
+    const BPM = 95;
+    const STEP_TIME = (60 / BPM) * 1000 / 2; 
+    const nodes = [];
+
+    function log(msg) {
+        const l = document.getElementById('log');
+        l.innerHTML = `<div>> ${msg}</div>` + l.innerHTML;
+    }
+
+    // --- BUILD VISUAL UI ---
+    const vortexEl = document.getElementById('vortex');
+    const radius = 180; 
+
+    for(let i = 0; i < STEPS; i++) {
+        const node = document.createElement('div');
+        node.className = 'vortex-node';
+        node.innerText = scale[i].note;
+        
+        if (i === 0) {
+            node.style.width = '70px'; node.style.height = '70px';
+            node.style.marginLeft = '-35px'; node.style.marginTop = '-35px';
+            node.style.left = '250px'; node.style.top = '250px';
+        } else {
+            node.style.width = '50px'; node.style.height = '50px';
+            node.style.marginLeft = '-25px'; node.style.marginTop = '-25px';
+            const angle = ((i - 1) / 8) * (Math.PI * 2) + (Math.PI / 2); 
+            const x = Math.cos(angle) * radius + 250; 
+            const y = Math.sin(angle) * radius + 250;
+            node.style.left = `${x}px`; node.style.top = `${y}px`;
+        }
+        
+        node.onclick = () => {
+            node.classList.toggle('selected');
+            if (aCtx && aCtx.state === 'running') playHandpanNote(scale[i].freq, scale[i].note);
+            if (dc && dc.readyState === "open" && myRole === 'master') {
+                dc.send(JSON.stringify({type: "LIVE", idx: i, active: node.classList.contains('selected')}));
+            }
+        };
+        vortexEl.appendChild(node);
+        nodes.push(node);
+    }
+
+    // --- DYNAMIC CONTROLS ---
+    function updateVolume(val) {
+        if(masterOut) masterOut.gain.setTargetAtTime(val, aCtx.currentTime, 0.1);
+    }
+
+    function updateReverb(val) {
+        if(feedbackGain) feedbackGain.gain.setTargetAtTime(val, aCtx.currentTime, 0.1);
+    }
+
+    function changeScale(scaleName, sendSync = false) {
+        currentScaleName = scaleName;
+        scale = scalesDB[scaleName];
+        document.getElementById('scale-select').value = scaleName;
+        
+        // Update the notes in the 3D visualizer
+        for(let i = 0; i < STEPS; i++) {
+            nodes[i].innerText = scale[i].note;
+        }
+        log("Toonladder gewijzigd naar: " + scaleName);
+        
+        // Sync via WebRTC to Slave
+        if (sendSync && dc && dc.readyState === "open" && myRole === 'master') {
+            dc.send(JSON.stringify({type: "SCALE", name: scaleName}));
+        }
+    }
+
+    // --- AUDIO ENGINE ---
+    function setupAudio() {
+        if(aCtx) return;
+        aCtx = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Grab values from the sliders upon initialization
+        const initialVol = document.getElementById('vol-slider').value;
+        const initialRev = document.getElementById('rev-slider').value;
+
+        masterOut = aCtx.createGain(); masterOut.gain.value = initialVol;
+        audioDest = aCtx.createMediaStreamDestination(); 
+        
+        const delay = aCtx.createDelay(); delay.delayTime.value = 0.45; 
+        feedbackGain = aCtx.createGain(); feedbackGain.gain.value = initialRev; // Dynamische galm
+        const filter = aCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 1600;
+
+        delay.connect(filter); filter.connect(feedbackGain); feedbackGain.connect(delay);
+
+        delay.connect(aCtx.destination); delay.connect(audioDest);
+        masterOut.connect(delay); masterOut.connect(aCtx.destination); masterOut.connect(audioDest);
+        
+        document.getElementById('audio-badge').classList.add('online');
+        document.getElementById('audio-badge').innerText = "AUDIO ONLINE";
+    }
+
+    function createHarmonic(freq, vol, decayMultiplier, nu) {
+        const osc = aCtx.createOscillator(); const gain = aCtx.createGain();
+        osc.type = 'sine'; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0, nu);
+        gain.gain.linearRampToValueAtTime(vol, nu + 0.008); 
+        gain.gain.exponentialRampToValueAtTime(0.001, nu + (1.8 * decayMultiplier)); 
+        osc.connect(gain); gain.connect(masterOut);
+        osc.start(nu); osc.stop(nu + (1.8 * decayMultiplier) + 0.1); 
+    }
+
+    function playHandpanNote(freq, noteName) {
+        if (aCtx && aCtx.state === 'suspended') aCtx.resume();
+        const nu = aCtx.currentTime;
+        createHarmonic(freq, 0.8, 1.0, nu); createHarmonic(freq * 2, 0.4, 0.8, nu);      
+        createHarmonic(freq * 3, 0.1, 0.6, nu); createHarmonic(freq * 4.76, 0.03, 0.2, nu);  
+
+        document.getElementById('freq-out').innerText = freq.toFixed(1) + " Hz";
+        document.getElementById('note-out').innerText = noteName;
+    }
+
+    // --- NETWERK P2P ---
+    function initEngine() {
+        if (aCtx) return;
+        setupAudio();
+        ws = new WebSocket("ws://127.0.0.1:1880/vortex");
+        ws.onopen = () => { log("Signaling Verbonden."); document.getElementById('btn-2').disabled = false; };
+
+        ws.onmessage = async (e) => {
+            const data = JSON.parse(e.data).payload || JSON.parse(e.data);
+            if (data.senderID === myID) return;
+
+            try {
+                if (data.type === 'offer') {
+                    if (myRole !== 'idle') return; 
+                    sessionToken = data.token; myRole = 'slave';
+                    
+                    log("Schakelen naar SLAVE...");
+                    document.getElementById('btn-2').disabled = true;
+                    document.getElementById('btn-2').innerText = "RECEIVING TUNNEL";
+                    document.getElementById('btn-record').style.display = 'none'; 
+                    document.getElementById('scale-select').disabled = true; // Slave volgt de master!
+                    
+                    setupWebRTC();
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+                    const answer = await pc.createAnswer();
+                    await pc.setLocalDescription(answer);
+                    ws.send(JSON.stringify({payload: {type:'answer', answer:answer, senderID:myID, token: sessionToken}}));
+                    processIceQueue();
+
+                } else if (data.type === 'answer') {
+                    if (myRole !== 'master' || data.token !== sessionToken) return;
+                    log("Answer ontvangen! Tunnel verbinden...");
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+                    processIceQueue();
+                } else if (data.candidate) {
+                    if (data.token !== sessionToken) return;
+                    if (pc && pc.remoteDescription && pc.remoteDescription.type) {
+                        pc.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {});
+                    } else iceQueue.push(data.candidate);
+                }
+            } catch(err) { log("RTC Error: " + err.message); }
+        };
+    }
+
+    function setupWebRTC() {
+        if (pc) pc.close();
+        iceQueue = []; 
+        pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        dc = pc.createDataChannel("vortex", { negotiated: true, id: 0 });
+        setupDC();
+
+        pc.onicecandidate = e => {
+            if(e.candidate) ws.send(JSON.stringify({payload: {candidate: e.candidate, senderID: myID, token: sessionToken}}));
+        };
+        pc.oniceconnectionstatechange = () => {
+            if(pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                document.getElementById('p2p-badge').classList.add('online');
+                document.getElementById('p2p-badge').innerText = "P2P ONLINE";
+            }
+        };
+    }
+
+    function processIceQueue() {
+        while(iceQueue.length > 0) pc.addIceCandidate(new RTCIceCandidate(iceQueue.shift())).catch(() => {});
+    }
+
+    function startTunnel() {
+        if (myRole !== 'idle') return;
+        myRole = 'master';
+        sessionToken = "TOKEN-" + Math.floor(Math.random() * 999999);
+        
+        document.getElementById('btn-2').disabled = true;
+        document.getElementById('btn-2').innerText = "MASTER MODE";
+        document.getElementById('btn-record').style.display = 'block'; 
+        
+        log("Tunnel initiëren als MASTER...");
+        setupWebRTC();
+        pc.createOffer().then(o => pc.setLocalDescription(o))
+          .then(() => ws.send(JSON.stringify({payload: {type:'offer', offer: pc.localDescription, senderID: myID, token: sessionToken}})));
+    }
+
+    function setupDC() {
+        dc.onopen = () => {
+            log("!!! P2P STREAM CONNECTED !!!");
+            document.getElementById('dc-status').innerText = "CONNECTED";
+            document.getElementById('dc-status').style.color = "#39ff14";
+            document.getElementById('btn-seq').disabled = false;
+            
+            // Zend direct de huidige toonladder door naar de Slave!
+            if (myRole === 'master') dc.send(JSON.stringify({type: "SCALE", name: currentScaleName}));
+        };
+        
+        dc.onmessage = (e) => {
+            const m = JSON.parse(e.data);
+            if(m.type === "STEP") {
+                nodes.forEach(n => n.classList.remove('playing'));
+                nodes[m.idx].classList.add('playing');
+                if(m.play) playHandpanNote(scale[m.idx].freq, scale[m.idx].note);
+            } else if (m.type === "LIVE") {
+                if(m.active) nodes[m.idx].classList.add('selected');
+                else nodes[m.idx].classList.remove('selected');
+            } else if (m.type === "SCALE") {
+                // Slave update zijn toonladder als de Master dat zegt
+                changeScale(m.name, false); 
+            }
+        };
+    }
+
+    // --- SEQUENCER & RECORDER ---
+    function step() {
+        const prevStep = currentStep === 0 ? STEPS - 1 : currentStep - 1;
+        nodes[prevStep].classList.remove('playing');
+        
+        const currentNode = nodes[currentStep];
+        currentNode.classList.add('playing');
+
+        let shouldPlay = currentNode.classList.contains('selected');
+        if(shouldPlay) playHandpanNote(scale[currentStep].freq, scale[currentStep].note);
+
+        if (dc && dc.readyState === "open" && myRole === 'master') {
+            dc.send(JSON.stringify({type: "STEP", idx: currentStep, play: shouldPlay}));
+        }
+
+        currentStep = (currentStep + 1) % STEPS;
+    }
+
+    function toggleSequencer() {
+        const btn = document.getElementById('btn-seq');
+        if(isPlaying) {
+            clearInterval(seqInterval); isPlaying = false;
+            btn.classList.remove('active'); btn.innerText = "START P2P RESONANCE";
+            nodes.forEach(n => n.classList.remove('playing'));
+        } else {
+            currentStep = 0; seqInterval = setInterval(step, STEP_TIME);
+            isPlaying = true; btn.classList.add('active'); btn.innerText = "HALT P2P RESONANCE";
+        }
+    }
+
+    async function toggleRecording() {
+        const btn = document.getElementById('btn-record');
+        if (isRecording) {
+            mediaRecorder.stop();
+            displayStream.getTracks().forEach(track => track.stop());
+            btn.innerText = "REC / CAPTURE"; btn.classList.remove('recording');
+            isRecording = false; return;
+        }
+        try {
+            displayStream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false });
+            const tracks = [...displayStream.getVideoTracks(), ...audioDest.stream.getAudioTracks()];
+            const combinedStream = new MediaStream(tracks);
+            mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
+            recordedChunks = [];
+            mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/webm' });
+                const a = document.createElement('a'); a.style.display = 'none';
+                a.href = URL.createObjectURL(blob); a.download = 'handpan_master_session.webm';
+                document.body.appendChild(a); a.click();
+            };
+            displayStream.getVideoTracks()[0].onended = () => { if (isRecording) toggleRecording(); };
+            mediaRecorder.start(); isRecording = true;
+            btn.innerText = "STOP & SAVE REC"; btn.classList.add('recording');
+        } catch (err) { log("Opname geannuleerd."); }
+    }
+
+    // Helpers
+    function randomizeNodes() { 
+        nodes.forEach((n, idx) => { 
+            const isActive = Math.random() > 0.6;
+            if(isActive) n.classList.add('selected'); else n.classList.remove('selected'); 
+            if (dc && dc.readyState === "open" && myRole === 'master') dc.send(JSON.stringify({type: "LIVE", idx: idx, active: isActive}));
+        }); 
+    }
+    function clearNodes() { 
+        nodes.forEach((n, idx) => { 
+            n.classList.remove('selected'); 
+            if (dc && dc.readyState === "open" && myRole === 'master') dc.send(JSON.stringify({type: "LIVE", idx: idx, active: false}));
+        }); 
+    }
+
+    randomizeNodes();
+</script>
+</body>
+</html>
